@@ -544,7 +544,8 @@ func (fs *FileService) GetFileStream(c *gin.Context) {
 
 	c.Header("Content-Disposition", fmt.Sprintf("%s; filename=\"%s\"", disposition, file.Name))
 
-	tokens, err := GetBotsToken(c, session.UserId)
+	channelId := file.ChannelID
+	tokens, err := GetBotsToken(c, session.UserId, channelId)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -563,7 +564,7 @@ func (fs *FileService) GetFileStream(c *gin.Context) {
 			client, _ = tgc.UserLogin(session.Session)
 			channelUser = strconv.FormatInt(session.UserId, 10)
 		} else {
-			tgc.Workers.Set(tokens)
+			tgc.Workers.Set(tokens, channelId)
 			token = tgc.Workers.Next()
 			client, _ = tgc.BotLogin(token)
 			channelUser = strings.Split(token, ":")[0]

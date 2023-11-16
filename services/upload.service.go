@@ -105,7 +105,9 @@ func (us *UploadService) UploadFile(c *gin.Context) (*schemas.UploadPartOut, *ty
 
 	fileName := uploadQuery.Filename
 
-	tokens, err := GetBotsToken(c, userId)
+	channelId := uploadQuery.ChannelID
+
+	tokens, err := GetBotsToken(c, userId, &channelId)
 
 	if err != nil {
 		return nil, &types.AppError{Error: errors.New("failed to fetch bots"), Code: http.StatusInternalServerError}
@@ -121,7 +123,7 @@ func (us *UploadService) UploadFile(c *gin.Context) (*schemas.UploadPartOut, *ty
 		client, _ = tgc.UserLogin(session)
 		channelUser = strconv.FormatInt(userId, 10)
 	} else {
-		tgc.Workers.Set(tokens)
+		tgc.Workers.Set(tokens, &channelId)
 		token = tgc.Workers.Next()
 		client, _ = tgc.BotLogin(token)
 		channelUser = strings.Split(token, ":")[0]

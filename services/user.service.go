@@ -91,7 +91,7 @@ func (us *UserService) Stats(c *gin.Context) (*schemas.AccountStats, *types.AppE
 
 func (us *UserService) GetBots(c *gin.Context) ([]string, *types.AppError) {
 	userID, _ := getUserAuth(c)
-	tokens, err := GetBotsToken(c, userID)
+	tokens, err := GetBotsToken(c, userID, nil)
 
 	if err != nil {
 		return nil, &types.AppError{Error: err, Code: http.StatusInternalServerError}

@@ -231,18 +231,22 @@ func GetDefaultChannel(ctx context.Context, userID int64) (int64, error) {
 	return channelID, nil
 }
 
-func GetBotsToken(ctx context.Context, userID int64) ([]string, error) {
+func GetBotsToken(ctx context.Context, userID int64, channelId *int64) ([]string, error) {
 	var bots []string
 
-	channelId, err := GetDefaultChannel(ctx, userID)
+	if channelId == nil {
+		defaultChannelId, err := GetDefaultChannel(ctx, userID)
 
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
+
+		channelId = &defaultChannelId
 	}
 
-	key := fmt.Sprintf("users:bots:%d:%d", userID, channelId)
+	key := fmt.Sprintf("users:bots:%d:%d", userID, &channelId)
 
-	err = cache.GetCache().Get(key, &bots)
+	err := cache.GetCache().Get(key, &bots)
 
 	if err == nil {
 		return bots, nil

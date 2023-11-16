@@ -9,15 +9,21 @@ import (
 
 type BotWorkers struct {
 	sync.Mutex
-	bots  []string
-	index int
+	bots      []string
+	index     int
+	channelId int64
 }
 
-func (w *BotWorkers) Set(bots []string) {
+func (w *BotWorkers) Set(bots []string, channelId *int64) {
 	w.Lock()
 	defer w.Unlock()
-	if len(w.bots) == 0 {
+	if channelId != nil && *channelId != w.channelId {
 		w.bots = bots
+		w.channelId = *channelId
+	} else {
+		if len(w.bots) == 0 {
+			w.bots = bots
+		}
 	}
 }
 
