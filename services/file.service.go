@@ -585,7 +585,7 @@ func (fs *FileService) GetFileStream(c *gin.Context) {
 	} else {
 		limit := utils.Min(len(tokens), config.BgBotsLimit)
 
-		tgc.StreamWorkers.Set(tokens[:limit])
+		tgc.StreamWorkers.Set(tokens[:limit], channelId)
 
 		client, index, err := tgc.StreamWorkers.Next()
 

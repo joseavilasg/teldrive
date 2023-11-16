@@ -20,10 +20,8 @@ func (w *BotWorkers) Set(bots []string, channelId *int64) {
 	if channelId != nil && *channelId != w.channelId {
 		w.bots = bots
 		w.channelId = *channelId
-	} else {
-		if len(w.bots) == 0 {
-			w.bots = bots
-		}
+	} else if len(w.bots) == 0 {
+		w.bots = bots
 	}
 }
 
@@ -45,20 +43,33 @@ type Client struct {
 
 type streamWorkers struct {
 	sync.Mutex
-	bots    []string
-	clients []*Client
-	index   int
+	bots      []string
+	channelId int64
+	clients   []*Client
+	index     int
 }
 
-func (w *streamWorkers) Set(bots []string) {
+func (w *streamWorkers) Set(bots []string, channelId *int64) {
 	w.Lock()
 	defer w.Unlock()
-	if len(w.clients) == 0 {
-		w.bots = bots
+
+	setupClients := func(replace bool) {
 		for _, token := range bots {
 			client, _ := BotLogin(token)
+			if replace {
+				w.clients = []*Client{}
+			}
 			w.clients = append(w.clients, &Client{Tg: client, Status: "idle"})
 		}
+	}
+
+	if channelId != nil && *channelId != w.channelId {
+		w.bots = bots
+		w.channelId = *channelId
+		setupClients(true)
+	} else if len(w.clients) == 0 {
+		w.bots = bots
+		setupClients(false)
 	}
 }
 
