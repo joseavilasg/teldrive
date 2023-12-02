@@ -3,19 +3,16 @@ package main
 import (
 	"fmt"
 	"mime"
-	"path/filepath"
 	"time"
 
-	"github.com/divyam234/teldrive/database"
-	"github.com/divyam234/teldrive/routes"
-	"github.com/divyam234/teldrive/ui"
-	"github.com/divyam234/teldrive/utils"
+	"github.com/divyam234/drive/database"
+	"github.com/divyam234/drive/routes"
+	"github.com/divyam234/drive/ui"
+	"github.com/divyam234/drive/utils"
 
 	"github.com/divyam234/cors"
-	"github.com/divyam234/teldrive/utils/cache"
-	"github.com/divyam234/teldrive/utils/cron"
+	"github.com/divyam234/drive/utils/cache"
 	"github.com/gin-gonic/gin"
-	"github.com/go-co-op/gocron"
 )
 
 func main() {
@@ -31,14 +28,6 @@ func main() {
 	database.InitDB()
 
 	cache.InitCache()
-
-	scheduler := gocron.NewScheduler(time.UTC)
-
-	scheduler.Every(1).Hour().Do(cron.FilesDeleteJob)
-
-	scheduler.Every(12).Hour().Do(cron.UploadCleanJob)
-
-	scheduler.StartAsync()
 
 	router.Use(cors.New(cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
@@ -59,11 +48,5 @@ func main() {
 	ui.AddRoutes(router)
 
 	config := utils.GetConfig()
-	certDir := filepath.Join(config.ExecDir, "sslcerts")
-	ok, _ := utils.PathExists(certDir)
-	if ok && config.Https {
-		router.RunTLS(fmt.Sprintf(":%d", config.Port), filepath.Join(certDir, "cert.pem"), filepath.Join(certDir, "key.pem"))
-	} else {
-		router.Run(fmt.Sprintf(":%d", config.Port))
-	}
+	router.Run(fmt.Sprintf(":%d", config.Port))
 }

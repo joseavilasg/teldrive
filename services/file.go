@@ -1,10 +1,7 @@
 package services
 
 import (
-	"context"
-	"crypto/rand"
 	"encoding/base64"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -12,17 +9,15 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/divyam234/teldrive/mapper"
-	"github.com/divyam234/teldrive/models"
-	"github.com/divyam234/teldrive/schemas"
-	"github.com/divyam234/teldrive/utils"
-	"github.com/divyam234/teldrive/utils/cache"
-	"github.com/divyam234/teldrive/utils/md5"
-	"github.com/divyam234/teldrive/utils/reader"
-	"github.com/divyam234/teldrive/utils/tgc"
-	"github.com/gotd/td/tg"
+	"github.com/divyam234/drive/mapper"
+	"github.com/divyam234/drive/models"
+	"github.com/divyam234/drive/schemas"
+	"github.com/divyam234/drive/types"
 
-	"github.com/divyam234/teldrive/types"
+	"github.com/divyam234/drive/utils"
+	"github.com/divyam234/drive/utils/cache"
+	"github.com/divyam234/drive/utils/md5"
+	"github.com/divyam234/drive/utils/reader"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -36,38 +31,8 @@ type FileService struct {
 	Db *gorm.DB
 }
 
-type Buffer struct {
-	Buf []byte
-}
-
-func (b *Buffer) Long() (int64, error) {
-	v, err := b.Uint64()
-	if err != nil {
-		return 0, err
-	}
-	return int64(v), nil
-}
-func (b *Buffer) Uint64() (uint64, error) {
-	const size = 8
-	if len(b.Buf) < size {
-		return 0, io.ErrUnexpectedEOF
-	}
-	v := binary.LittleEndian.Uint64(b.Buf)
-	b.Buf = b.Buf[size:]
-	return v, nil
-}
-
-func RandInt64() (int64, error) {
-	var buf [8]byte
-	if _, err := io.ReadFull(rand.Reader, buf[:]); err != nil {
-		return 0, err
-	}
-	b := &Buffer{Buf: buf[:]}
-	return b.Long()
-}
-
 func (fs *FileService) CreateFile(c *gin.Context) (*schemas.FileOut, *types.AppError) {
-	userId, _ := getUserAuth(c)
+	userId := getUserId(c)
 	var fileIn schemas.FileIn
 	if err := c.ShouldBindJSON(&fileIn); err != nil {
 		return nil, &types.AppError{Error: errors.New("invalid request payload"), Code: http.StatusBadRequest}
@@ -95,18 +60,6 @@ func (fs *FileService) CreateFile(c *gin.Context) (*schemas.FileOut, *types.AppE
 		fileIn.Depth = utils.IntPointer(len(strings.Split(fileIn.Path, "/")) - 1)
 	} else if fileIn.Type == "file" {
 		fileIn.Path = ""
-		var channelId int64
-		var err error
-		if fileIn.ChannelID == 0 {
-			channelId, err = GetDefaultChannel(c, userId)
-			if err != nil {
-				return nil, &types.AppError{Error: err, Code: http.StatusInternalServerError}
-			}
-		} else {
-			channelId = fileIn.ChannelID
-		}
-
-		fileIn.ChannelID = channelId
 	}
 
 	fileIn.UserID = userId
@@ -142,7 +95,7 @@ func (fs *FileService) UpdateFile(c *gin.Context) (*schemas.FileOut, *types.AppE
 	}
 
 	if fileUpdate.Type == "folder" && fileUpdate.Name != "" {
-		if err := fs.Db.Raw("select * from teldrive.update_folder(?, ?)", fileID, fileUpdate.Name).Scan(&files).Error; err != nil {
+		if err := fs.Db.Raw("select * from drive.update_folder(?, ?)", fileID, fileUpdate.Name).Scan(&files).Error; err != nil {
 			return nil, &types.AppError{Error: errors.New("failed to update the file"), Code: http.StatusInternalServerError}
 		}
 	} else {
@@ -183,7 +136,7 @@ func (fs *FileService) GetFileByID(c *gin.Context) (*schemas.FileOutFull, error)
 
 func (fs *FileService) ListFiles(c *gin.Context) (*schemas.FileResponse, *types.AppError) {
 
-	userId, _ := getUserAuth(c)
+	userId := getUserId(c)
 
 	var pagingParams schemas.PaginationQuery
 	pagingParams.PerPage = 200
@@ -253,7 +206,7 @@ func (fs *FileService) ListFiles(c *gin.Context) (*schemas.FileResponse, *types.
 
 	} else if fileQuery.Op == "search" {
 
-		query.Where("teldrive.get_tsquery(?) @@ teldrive.get_tsvector(name)", fileQuery.Search)
+		query.Where("drive.get_tsquery(?) @@ drive.get_tsvector(name)", fileQuery.Search)
 
 		setOrderFilter(query, &pagingParams, &sortingParams)
 		query.Order(getOrder(sortingParams))
@@ -298,117 +251,14 @@ func (fs *FileService) MakeDirectory(c *gin.Context) (*schemas.FileOut, *types.A
 		return nil, &types.AppError{Error: errors.New("invalid request payload"), Code: http.StatusBadRequest}
 	}
 
-	userId, _ := getUserAuth(c)
-	if err := fs.Db.Raw("select * from teldrive.create_directories(?, ?)", userId, payload.Path).Scan(&files).Error; err != nil {
+	userId := getUserId(c)
+	if err := fs.Db.Raw("select * from drive.create_directories(?, ?)", userId, payload.Path).Scan(&files).Error; err != nil {
 		return nil, &types.AppError{Error: errors.New("failed to create directories"), Code: http.StatusInternalServerError}
 	}
 
 	file := mapper.MapFileToFileOut(files[0])
 
 	return &file, nil
-
-}
-
-func (fs *FileService) CopyFile(c *gin.Context) (*schemas.FileOut, *types.AppError) {
-
-	var payload schemas.Copy
-
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		return nil, &types.AppError{Error: errors.New("invalid request payload"), Code: http.StatusBadRequest}
-	}
-
-	userId, session := getUserAuth(c)
-
-	client, _ := tgc.UserLogin(c, session)
-
-	var res []models.File
-
-	fs.Db.Model(&models.File{}).Where("id = ?", payload.ID).Find(&res)
-
-	file := res[0]
-
-	newIds := models.Parts{}
-
-	err := tgc.RunWithAuth(c, client, "", func(ctx context.Context) error {
-		user := strconv.FormatInt(userId, 10)
-		messages, err := getTGMessages(c, client, *file.Parts, *file.ChannelID, user)
-		if err != nil {
-			return err
-		}
-
-		channel, err := GetChannelById(c, client, *file.ChannelID, user)
-		if err != nil {
-			return err
-		}
-		for _, message := range messages.Messages {
-			item := message.(*tg.Message)
-			media := item.Media.(*tg.MessageMediaDocument)
-			document := media.Document.(*tg.Document)
-
-			id, _ := RandInt64()
-			request := tg.MessagesSendMediaRequest{
-				Silent:   true,
-				Peer:     &tg.InputPeerChannel{ChannelID: channel.ChannelID, AccessHash: channel.AccessHash},
-				Media:    &tg.InputMediaDocument{ID: document.AsInput()},
-				RandomID: id,
-			}
-			res, err := client.API().MessagesSendMedia(c, &request)
-
-			if err != nil {
-				return err
-			}
-
-			updates := res.(*tg.Updates)
-
-			var msg *tg.Message
-
-			for _, update := range updates.Updates {
-				channelMsg, ok := update.(*tg.UpdateNewChannelMessage)
-				if ok {
-					msg = channelMsg.Message.(*tg.Message)
-					break
-				}
-
-			}
-			newIds = append(newIds, models.Part{ID: int64(msg.ID)})
-
-		}
-		return nil
-	})
-
-	if err != nil {
-		return nil, &types.AppError{Error: err, Code: http.StatusBadRequest}
-	}
-
-	var destRes []models.File
-
-	if err := fs.Db.Raw("select * from teldrive.create_directories(?, ?)", userId, payload.Destination).Scan(&destRes).Error; err != nil {
-		return nil, &types.AppError{Error: errors.New("failed to create destination"), Code: http.StatusInternalServerError}
-	}
-
-	dest := destRes[0]
-
-	dbFile := models.File{}
-
-	dbFile.Name = payload.Name
-	dbFile.Size = file.Size
-	dbFile.Type = file.Type
-	dbFile.MimeType = file.MimeType
-	dbFile.Parts = &newIds
-	dbFile.UserID = userId
-	dbFile.Starred = utils.BoolPointer(false)
-	dbFile.Status = "active"
-	dbFile.ParentID = dest.ID
-	dbFile.ChannelID = file.ChannelID
-
-	if err := fs.Db.Create(&dbFile).Error; err != nil {
-		return nil, &types.AppError{Error: errors.New("failed to copy file"), Code: http.StatusBadRequest}
-
-	}
-
-	out := mapper.MapFileToFileOut(dbFile)
-
-	return &out, nil
 
 }
 
@@ -442,7 +292,7 @@ func (fs *FileService) DeleteFiles(c *gin.Context) (*schemas.Message, *types.App
 		return nil, &types.AppError{Error: errors.New("invalid request payload"), Code: http.StatusBadRequest}
 	}
 
-	if err := fs.Db.Exec("call teldrive.delete_files($1)", payload.Files).Error; err != nil {
+	if err := fs.Db.Exec("call drive.delete_files($1)", payload.Files).Error; err != nil {
 		return nil, &types.AppError{Error: errors.New("failed to delete files"), Code: http.StatusInternalServerError}
 	}
 
@@ -457,9 +307,9 @@ func (fs *FileService) MoveDirectory(c *gin.Context) (*schemas.Message, *types.A
 		return nil, &types.AppError{Error: errors.New("invalid request payload"), Code: http.StatusBadRequest}
 	}
 
-	userId, _ := getUserAuth(c)
+	userId := getUserId(c)
 
-	if err := fs.Db.Exec("select * from teldrive.move_directory(? , ? , ?)", payload.Source, payload.Destination, userId).Error; err != nil {
+	if err := fs.Db.Exec("select * from drive.move_directory(? , ? , ?)", payload.Source, payload.Destination, userId).Error; err != nil {
 		return nil, &types.AppError{Error: errors.New("failed to move directory"), Code: http.StatusInternalServerError}
 	}
 
@@ -473,25 +323,11 @@ func (fs *FileService) GetFileStream(c *gin.Context) {
 
 	fileID := c.Param("fileID")
 
-	authHash := c.Query("hash")
-
-	if authHash == "" {
-		http.Error(w, "misssing hash param", http.StatusBadRequest)
-		return
-	}
-
-	session, err := GetSessionByHash(authHash)
-
-	if err != nil {
-		http.Error(w, "invalid hash", http.StatusBadRequest)
-		return
-	}
-
 	file := &schemas.FileOutFull{}
 
 	key := fmt.Sprintf("files:%s", fileID)
 
-	err = cache.GetCache().Get(key, file)
+	err := cache.GetCache().Get(key, file)
 
 	if err != nil {
 		file, err = fs.GetFileByID(c)
@@ -546,73 +382,10 @@ func (fs *FileService) GetFileStream(c *gin.Context) {
 
 	c.Header("Content-Disposition", fmt.Sprintf("%s; filename=\"%s\"", disposition, file.Name))
 
-	tokens, err := GetBotsToken(c, session.UserId, *file.ChannelID)
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	config := utils.GetConfig()
-
-	var token, channelUser string
-
-	if config.LazyStreamBots {
-		tgc.Workers.Set(tokens, *file.ChannelID)
-		token = tgc.Workers.Next(*file.ChannelID)
-		client, _ := tgc.BotLogin(c, token)
-		channelUser = strings.Split(token, ":")[0]
-		if r.Method != "HEAD" {
-			tgc.RunWithAuth(c, client, token, func(ctx context.Context) error {
-				parts, err := getParts(c, client, file, channelUser)
-				if err != nil {
-					return err
-				}
-				parts = rangedParts(parts, start, end)
-				lr, _ := reader.NewLinearReader(c, client, parts, contentLength)
-				io.CopyN(w, lr, contentLength)
-				return nil
-			})
-		}
-
-	} else {
-
-		var client *tgc.Client
-
-		if config.DisableStreamBots || len(tokens) == 0 {
-			tgClient, _ := tgc.UserLogin(c, session.Session)
-			client, err = tgc.StreamWorkers.UserWorker(tgClient)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			channelUser = strconv.FormatInt(session.UserId, 10)
-		} else {
-			var index int
-			limit := utils.Min(len(tokens), config.BgBotsLimit)
-
-			tgc.StreamWorkers.Set(tokens[:limit], *file.ChannelID)
-
-			client, index, err = tgc.StreamWorkers.Next(*file.ChannelID)
-
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			channelUser = strings.Split(tokens[index], ":")[0]
-
-		}
-
-		if r.Method != "HEAD" {
-			parts, err := getParts(c, client.Tg, file, channelUser)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			parts = rangedParts(parts, start, end)
-			lr, _ := reader.NewLinearReader(c, client.Tg, parts, contentLength)
-			io.CopyN(w, lr, contentLength)
-		}
+	if r.Method != "HEAD" {
+		parts := rangedParts(*file.Parts, start, end)
+		lr, _ := reader.NewLinearReader(parts, contentLength)
+		io.CopyN(w, lr, contentLength)
 	}
 
 }

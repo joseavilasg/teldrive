@@ -1,4 +1,4 @@
-project_name: teldrive
+project_name: drive
 env:
   - GO111MODULE=on
 

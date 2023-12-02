@@ -1,88 +1,66 @@
 -- +goose Up
-create table teldrive.files (
-id text primary key not null default teldrive.generate_uid(16),
-name text not null,
-type text not null,
-mime_type text not null,
-path text null,
-size bigint null,
-starred bool not null,
-depth integer null,
-user_id bigint not null,
-parent_id text null,
-status text default 'active'::text,
-channel_id bigint null,
-parts jsonb null,
-created_at timestamp not null default timezone('utc'::text,
-now()),
-updated_at timestamp not null default timezone('utc'::text,
-now()),
-constraint unique_file unique (name,
-parent_id,user_id)
+
+CREATE TABLE drive.files (
+    id TEXT PRIMARY KEY NOT NULL DEFAULT drive.generate_uid(16),
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    path TEXT,
+    size BIGINT,
+    starred BOOLEAN NOT NULL,
+    depth INTEGER,
+    user_id INTEGER NOT NULL,
+    parent_id TEXT,
+    status TEXT DEFAULT 'active'::TEXT,
+    parts JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT timezone('utc'::TEXT, now()),
+    updated_at TIMESTAMP NOT NULL DEFAULT timezone('utc'::TEXT, now())
 );
 
-create table teldrive.uploads (
-	id text not null primary key default teldrive.generate_uid(16),
-	upload_id text not null,
-	name text not null,
-	part_no int4 not null,
-	part_id int4 not null,
-	total_parts int4 not null,
-	channel_id int8 not null,
-	size int8 not null,
-	created_at timestamp null default timezone('utc'::text,
-now())
+CREATE TABLE drive.uploads (
+    upload_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    part_no INTEGER NOT NULL,
+    size BIGINT NOT NULL,
+    url TEXT NOT NULL,
+	user_id INTEGER NOT NULL,
+    created_at TIMESTAMP NULL DEFAULT timezone('utc'::TEXT, now())
 );
 
-create table teldrive.users (
-	user_id bigint not null primary key,
-	name text null,
-	user_name text null,
-	is_premium bool not null,
-	tg_session text not null,
-	settings jsonb null,
-	created_at timestamptz not null default timezone('utc'::text,
-now()),
-	updated_at timestamptz not null default timezone('utc'::text,
-now())
+CREATE TABLE drive.users (
+    id SERIAL PRIMARY KEY,
+    full_name TEXT,
+    user_name TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::TEXT, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::TEXT, now())
 );
 
-create collation if not exists numeric (provider = icu, locale = 'en@colnumeric=yes');
-create index  name_search_idx on
-teldrive.files
-	using gin (teldrive.get_tsvector(name),
-updated_at);
+CREATE INDEX name_search_idx ON drive.files USING gin (drive.get_tsvector(name), updated_at);
 
-create index  name_numeric_idx on
-teldrive.files(name collate numeric nulls first);
+CREATE INDEX name_numeric_idx ON drive.files (name COLLATE numeric NULLS FIRST, updated_at DESC);
 
-create index  parent_name_numeric_idx on
-teldrive.files (parent_id,
-name collate numeric desc);
+CREATE INDEX path_idx ON drive.files (path, user_id);
 
-create index  path_idx on
-teldrive.files (path);
+CREATE INDEX parent_idx ON drive.files (parent_id, user_id);
 
-create index  parent_idx on
-teldrive.files (parent_id);
+CREATE INDEX starred_updated_at_idx ON drive.files (starred, updated_at DESC);
 
-create index  starred_updated_at_idx on
-teldrive.files (starred,
-updated_at desc);
+CREATE INDEX status_idx ON drive.files (status, user_id);
 
-create index  status_idx on teldrive.files (status);
+CREATE INDEX user_id_idx ON drive.files (user_id);
 
-create index  user_id_idx on teldrive.files (user_id);
+CREATE UNIQUE INDEX unique_file ON drive.files (name, parent_id, user_id) WHERE (status= 'active');
 
 -- +goose Down
-drop table if exists teldrive.files;
-drop table if exists teldrive.uploads;
-drop table if exists teldrive.users;
-drop index if exists teldrive.name_search_idx;
-drop index if exists teldrive.name_numeric_idx;
-drop index if exists teldrive.parent_name_numeric_idx;
-drop index if exists teldrive.path_idx;
-drop index if exists teldrive.parent_idx;
-drop index if exists teldrive.starred_updated_at_idx;
-drop index if exists teldrive.status_idx;
-drop index if exists teldrive.user_id_idx;
+DROP TABLE IF EXISTS drive.files;
+DROP TABLE IF EXISTS drive.uploads;
+DROP TABLE IF EXISTS drive.users;
+DROP INDEX IF EXISTS drive.name_search_idx;
+DROP INDEX IF EXISTS drive.name_numeric_idx;
+DROP INDEX IF EXISTS drive.path_idx;
+DROP INDEX IF EXISTS drive.parent_idx;
+DROP INDEX IF EXISTS drive.starred_updated_at_idx;
+DROP INDEX IF EXISTS drive.status_idx;
+DROP INDEX IF EXISTS drive.user_id_idx;

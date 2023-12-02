@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/divyam234/teldrive/utils/auth"
+	"github.com/divyam234/drive/utils/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/go-jose/go-jose/v3/jwt"
 )

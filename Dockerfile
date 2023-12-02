@@ -24,7 +24,7 @@ RUN make pre-ui &&  make ui
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags='-w -s -extldflags "-static"' -a \
-    -o /app/teldrive .
+    -o /app/drive .
 
 
 FROM --platform=${TARGETPLATFORM:-linux/amd64} busybox
@@ -34,8 +34,8 @@ WORKDIR /app
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-COPY --from=builder /app/teldrive /app/teldrive
+COPY --from=builder /app/drive /app/drive
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/teldrive"]
+ENTRYPOINT ["/app/drive"]

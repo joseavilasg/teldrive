@@ -3,8 +3,8 @@ package routes
 import (
 	"net/http"
 
-	"github.com/divyam234/teldrive/database"
-	"github.com/divyam234/teldrive/services"
+	"github.com/divyam234/drive/database"
+	"github.com/divyam234/drive/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -110,18 +110,6 @@ func addFileRoutes(rg *gin.RouterGroup) {
 	r.POST("/movedir", Authmiddleware, func(c *gin.Context) {
 
 		res, err := fileService.MoveDirectory(c)
-
-		if err != nil {
-			c.AbortWithError(err.Code, err.Error)
-			return
-		}
-
-		c.JSON(http.StatusOK, res)
-	})
-
-	r.POST("/copy", Authmiddleware, func(c *gin.Context) {
-
-		res, err := fileService.CopyFile(c)
 
 		if err != nil {
 			c.AbortWithError(err.Code, err.Error)

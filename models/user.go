@@ -5,10 +5,11 @@ import (
 )
 
 type User struct {
-	UserId    int64     `gorm:"type:bigint;primaryKey"`
-	Name      string    `gorm:"type:text"`
+	Id        int       `gorm:"type:serial;primaryKey"`
+	FullName  string    `gorm:"type:text"`
 	UserName  string    `gorm:"type:text"`
-	IsPremium bool      `gorm:"type:bool"`
+	Email     string    `gorm:"type:text"`
+	Password  string    `gorm:"type:text"`
 	UpdatedAt time.Time `gorm:"default:timezone('utc'::text, now())"`
 	CreatedAt time.Time `gorm:"default:timezone('utc'::text, now())"`
 }

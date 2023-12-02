@@ -3,7 +3,7 @@ package schemas
 import (
 	"time"
 
-	"github.com/divyam234/teldrive/models"
+	"github.com/divyam234/drive/models"
 )
 
 type PaginationQuery struct {
@@ -27,34 +27,33 @@ type FileQuery struct {
 	ParentID  string     `form:"parentId" mapstructure:"parent_id,omitempty"`
 	UpdatedAt *time.Time `form:"updatedAt" mapstructure:"updated_at,omitempty"`
 	Status    string     `mapstructure:"status"`
-	UserID    int64      `mapstructure:"user_id"`
+	UserID    int        `mapstructure:"user_id"`
 }
 
 type FileIn struct {
-	Name      string        `json:"name"`
-	Type      string        `json:"type"`
-	Parts     *models.Parts `json:"parts,omitempty"`
-	MimeType  string        `json:"mimeType"`
-	ChannelID int64         `json:"channelId"`
-	Path      string        `json:"path"`
-	Size      int64         `json:"size"`
-	Starred   *bool         `json:"starred"`
-	Depth     *int          `json:"depth,omitempty"`
-	Status    string        `json:"status,omitempty"`
-	UserID    int64         `json:"userId"`
-	ParentID  string        `json:"parentId"`
+	Name     string        `json:"name"`
+	Type     string        `json:"type"`
+	Parts    *models.Parts `json:"parts,omitempty"`
+	MimeType string        `json:"mimeType"`
+	Path     string        `json:"path"`
+	Size     int64         `json:"size"`
+	Starred  *bool         `json:"starred"`
+	Depth    *int          `json:"depth,omitempty"`
+	Status   string        `json:"status,omitempty"`
+	UserID   int           `json:"userId"`
+	ParentID string        `json:"parentId"`
 }
 
 type FileOut struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	Type      string    `json:"type"`
-	MimeType  string    `json:"mimeType" mapstructure:"mime_type"`
-	Path      string    `json:"path,omitempty" mapstructure:"path,omitempty"`
-	Size      int64     `json:"size,omitempty" mapstructure:"size,omitempty"`
+	MimeType  string    `json:"mimeType"`
+	Path      string    `json:"path,omitempty"`
+	Size      int64     `json:"size,omitempty"`
 	Starred   *bool     `json:"starred"`
-	ParentID  string    `json:"parentId,omitempty" mapstructure:"parent_id"`
-	UpdatedAt time.Time `json:"updatedAt,omitempty" mapstructure:"updated_at"`
+	ParentID  string    `json:"parentId,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt,omitempty"`
 }
 
 type FileResponse struct {

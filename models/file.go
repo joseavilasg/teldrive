@@ -15,18 +15,18 @@ type File struct {
 	Size      int64     `gorm:"type:bigint"`
 	Starred   *bool     `gorm:"default:false"`
 	Depth     *int      `gorm:"type:integer"`
-	UserID    int64     `gorm:"type:bigint;not null"`
+	UserID    int       `gorm:"type:integer;not null"`
 	Status    string    `gorm:"type:text"`
 	ParentID  string    `gorm:"type:text;index"`
 	Parts     *Parts    `gorm:"type:jsonb"`
-	ChannelID *int64    `gorm:"type:bigint"`
 	CreatedAt time.Time `gorm:"default:timezone('utc'::text, now())"`
 	UpdatedAt time.Time `gorm:"default:timezone('utc'::text, now())"`
 }
 
 type Parts []Part
 type Part struct {
-	ID int64 `json:"id"`
+	Url  string `json:"url"`
+	Size int64  `json:"size"`
 }
 
 func (a Parts) Value() (driver.Value, error) {

@@ -6,7 +6,7 @@ Telegram Drive is a powerful utility that enables you to create your own cloud s
 
 **Click on icon to join Discord Server for better support**
 
-[Read Wiki for FAQ](https://github.com/divyam234/teldrive/wiki).
+[Read Wiki for FAQ](https://github.com/divyam234/drive/wiki).
 
 <details open="open">
   <summary>Table of Contents</summary>
@@ -38,21 +38,21 @@ Telegram Drive is a powerful utility that enables you to create your own cloud s
 
 ![demo](./public/demo.png)
 
-[UI Repo ](https://github.com/divyam234/teldrive-ui)
+[UI Repo ](https://github.com/divyam234/drive-ui)
 
 ### Deploy using docker-compose
 
 First clone the repository
 
 ```sh
-git clone https://github.com/divyam234/teldrive
-cd teldrive
-touch teldrive.db
+git clone https://github.com/divyam234/drive
+cd drive
+touch drive.db
 ```
 
 **Follow Below Steps**
 
-- Create the `teldrive.env` file with your variables and start your container.
+- Create the `drive.env` file with your variables and start your container.
 
 ```sh
 docker compose up -d
@@ -74,8 +74,8 @@ docker compose up -d
 
 ## Setting up things
 
-If you're locally or remotely hosting, create a file named `teldrive.env` in the root directory and add all the variables there.
-An example of `teldrive.env` file:
+If you're locally or remotely hosting, create a file named `drive.env` in the root directory and add all the variables there.
+An example of `drive.env` file:
 
 ```sh
 APP_ID=1234
@@ -86,7 +86,7 @@ DATABASE_URL=postgres://<db username>:<db password>@<db host>/<db name>
 ```
 When used with `docker-compose.postgres.yml`:
 ```
-DATABASE_URL=postgres://teldrive:secret@db/teldrive
+DATABASE_URL=postgres://drive:secret@db/drive
 ```
 
 > **Warning**

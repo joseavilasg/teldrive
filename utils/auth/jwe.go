@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/divyam234/teldrive/types"
 	"github.com/go-jose/go-jose/v3"
+	"github.com/go-jose/go-jose/v3/jwt"
 )
 
-func Encode(payload *types.JWTClaims) (string, error) {
+func Encode(payload *jwt.Claims) (string, error) {
 
 	rcpt := jose.Recipient{
 		Algorithm: jose.PBES2_HS256_A128KW,
@@ -37,7 +37,7 @@ func Encode(payload *types.JWTClaims) (string, error) {
 	return jweToken, nil
 }
 
-func Decode(token string) (*types.JWTClaims, error) {
+func Decode(token string) (*jwt.Claims, error) {
 	jwe, err := jose.ParseEncrypted(token)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func Decode(token string) (*types.JWTClaims, error) {
 		return nil, err
 	}
 
-	jwtToken := &types.JWTClaims{}
+	jwtToken := &jwt.Claims{}
 
 	err = json.Unmarshal(decryptedData, jwtToken)
 

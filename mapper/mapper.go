@@ -1,8 +1,8 @@
 package mapper
 
 import (
-	"github.com/divyam234/teldrive/models"
-	"github.com/divyam234/teldrive/schemas"
+	"github.com/divyam234/drive/models"
+	"github.com/divyam234/drive/schemas"
 )
 
 func MapFileToFileOut(file models.File) schemas.FileOut {
@@ -21,36 +21,33 @@ func MapFileToFileOut(file models.File) schemas.FileOut {
 
 func MapFileInToFile(file schemas.FileIn) models.File {
 	return models.File{
-		Name:      file.Name,
-		Type:      file.Type,
-		MimeType:  file.MimeType,
-		Path:      file.Path,
-		Size:      file.Size,
-		Starred:   file.Starred,
-		Depth:     file.Depth,
-		UserID:    file.UserID,
-		ParentID:  file.ParentID,
-		Parts:     file.Parts,
-		ChannelID: &file.ChannelID,
-		Status:    file.Status,
+		Name:     file.Name,
+		Type:     file.Type,
+		MimeType: file.MimeType,
+		Path:     file.Path,
+		Size:     file.Size,
+		Starred:  file.Starred,
+		Depth:    file.Depth,
+		UserID:   file.UserID,
+		ParentID: file.ParentID,
+		Parts:    file.Parts,
+		Status:   file.Status,
 	}
 }
 
 func MapFileToFileOutFull(file models.File) *schemas.FileOutFull {
 	return &schemas.FileOutFull{
 		FileOut: MapFileToFileOut(file),
-		Parts:   file.Parts, ChannelID: file.ChannelID,
+		Parts:   file.Parts,
 	}
 }
 
 func MapUploadSchema(in *models.Upload) *schemas.UploadPartOut {
 	out := &schemas.UploadPartOut{
-		ID:        in.ID,
-		Name:      in.Name,
-		PartId:    in.PartId,
-		ChannelID: in.ChannelID,
-		PartNo:    in.PartNo,
-		Size:      in.Size,
+		Name:   in.Name,
+		PartNo: in.PartNo,
+		Size:   in.Size,
+		Url:    in.Url,
 	}
 	return out
 }
