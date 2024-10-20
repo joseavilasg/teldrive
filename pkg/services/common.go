@@ -40,6 +40,11 @@ func getParts(ctx context.Context, client *telegram.Client, cache cache.Cacher, 
 	}
 
 	for i, message := range messages {
+		_, ok := message.(*tg.MessageEmpty)
+		if ok {
+			return nil, fmt.Errorf("failed to find message with part id %q for file %q", file.Parts[i].ID, file.Name)
+		}
+
 		item := message.(*tg.Message)
 		media := item.Media.(*tg.MessageMediaDocument)
 		document := media.Document.(*tg.Document)
