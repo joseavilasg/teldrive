@@ -866,6 +866,7 @@ func (fs *FileService) GetFileStream(c *gin.Context, download bool, sharedFile *
 			}
 			_, err = io.CopyN(w, lr, contentLength)
 			if err != nil {
+				fs.handleError(fmt.Errorf("failed to copy file %q: %w", file.Name, err), w)
 				lr.Close()
 			}
 			return nil

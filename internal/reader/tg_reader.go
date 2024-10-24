@@ -2,6 +2,7 @@ package reader
 
 import (
 	"context"
+	"fmt"
 	"io"
 )
 
@@ -82,6 +83,16 @@ func (r *tgReader) next() (*buffer, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Verify that the leftCut and rightCut are within the bounds of the chunk
+	chunkLen := int64(len(chunk))
+	if r.leftCut < 0 || r.leftCut > chunkLen {
+		return nil, fmt.Errorf("leftCut index out of range: %d", r.leftCut)
+	}
+	if r.rightCut < 0 || r.rightCut > chunkLen {
+		return nil, fmt.Errorf("rightCut index out of range: %d", r.rightCut)
+	}
+
 	if r.totalParts == 1 {
 		chunk = chunk[r.leftCut:r.rightCut]
 	} else if r.currentPart == 1 {

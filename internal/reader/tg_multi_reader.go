@@ -168,6 +168,15 @@ func (r *tgMultiReader) fillBatch() error {
 				return fmt.Errorf("chunk %d: %w", r.currentPart+i, err)
 			}
 
+			// Verify that the leftCut and rightCut are within the bounds of the chunk
+			chunkLen := int64(len(chunk))
+			if r.leftCut < 0 || r.leftCut > chunkLen {
+				return fmt.Errorf("leftCut index out of range %d for chunk %d", r.leftCut, r.currentPart+i)
+			}
+			if r.rightCut < 0 || r.rightCut > chunkLen {
+				return fmt.Errorf("rightCut index out of range %d for chunk %d", r.rightCut, r.currentPart+i)
+			}
+
 			if r.totalParts == 1 {
 				chunk = chunk[r.leftCut:r.rightCut]
 			} else if r.currentPart+i == 0 {
