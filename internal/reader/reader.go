@@ -125,6 +125,9 @@ func (r *LinearReader) moveToNextPart() error {
 
 func (r *LinearReader) getPartReader() (io.ReadCloser, error) {
 	currentRange := r.ranges[r.pos]
+	if currentRange.PartNo < 0 || currentRange.PartNo >= int64(len(r.parts)) {
+		return nil, fmt.Errorf("part number %d out of range", currentRange.PartNo)
+	}
 	partID := r.parts[currentRange.PartNo].ID
 
 	chunkSrc := &chunkSource{
