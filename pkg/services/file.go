@@ -809,7 +809,7 @@ func (e *extendedService) FilesStream(w http.ResponseWriter, r *http.Request, fi
 
 			_, err = io.CopyN(w, lr, contentLength)
 			if err != nil {
-				fs.handleError(fmt.Errorf("failed to copy file %q: %w", file.Name, err), w)
+				http.Error(w, fmt.Sprintf("failed to copy file %q: %w", file.Name, err), http.StatusInternalServerError)
 				lr.Close()
 			}
 			return nil
