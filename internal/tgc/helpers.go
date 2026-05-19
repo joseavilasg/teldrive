@@ -7,14 +7,17 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
 	"github.com/tgdrive/teldrive/internal/cache"
 	"github.com/tgdrive/teldrive/internal/config"
+	"github.com/tgdrive/teldrive/internal/logging"
 	"github.com/tgdrive/teldrive/internal/utils"
 	"github.com/tgdrive/teldrive/pkg/types"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
@@ -191,9 +194,11 @@ func GetMediaContent(ctx context.Context, client *tg.Client, location tg.InputFi
 
 func GetBotInfo(ctx context.Context, db *gorm.DB, cache cache.Cacher, config *config.TGConfig, token string) (*types.BotInfo, error) {
 	var user *tg.User
+	logger := logging.Component("TG").With(zap.String("bot_token_id", botTokenID(token)))
 	middlewares := NewMiddleware(config, WithFloodWait(), WithRateLimit())
 	client, err := BotClient(ctx, db, cache, config, token, middlewares...)
 	if err != nil {
+		logger.Error("bot.info_client_failed", zap.Error(err))
 		return nil, err
 	}
 	err = RunWithAuth(ctx, client, token, func(ctx context.Context) error {
@@ -202,9 +207,23 @@ func GetBotInfo(ctx context.Context, db *gorm.DB, cache cache.Cacher, config *co
 		return err
 	})
 	if err != nil {
+		logger.Error("bot.info_fetch_failed", zap.Error(err))
+		return nil, err
+	}
+	if user == nil {
+		err = errors.New("bot self returned nil user")
+		logger.Error("bot.info_empty_user", zap.Error(err))
 		return nil, err
 	}
 	return &types.BotInfo{Id: user.ID, UserName: user.Username, Token: token}, nil
+}
+
+func botTokenID(token string) string {
+	parts := strings.SplitN(token, ":", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		return "unknown"
+	}
+	return parts[0]
 }
 
 func GetLocation(ctx context.Context, client *tg.Client, channelId int64, partId int64) (location *tg.InputDocumentFileLocation, err error) {

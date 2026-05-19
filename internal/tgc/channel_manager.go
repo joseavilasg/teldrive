@@ -12,9 +12,11 @@ import (
 	"github.com/tgdrive/teldrive/internal/auth"
 	"github.com/tgdrive/teldrive/internal/cache"
 	"github.com/tgdrive/teldrive/internal/config"
+	"github.com/tgdrive/teldrive/internal/logging"
 	"github.com/tgdrive/teldrive/internal/tgstorage"
 	"github.com/tgdrive/teldrive/pkg/models"
 	"github.com/tgdrive/teldrive/pkg/types"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -23,6 +25,8 @@ import (
 var (
 	ErrNoDefaultChannel = fmt.Errorf("no default channel found")
 )
+
+const addBotOperationTimeout = 1 * time.Minute
 
 type ChannelManager struct {
 	db    *gorm.DB
@@ -159,7 +163,7 @@ func (cm *ChannelManager) CreateNewChannel(ctx context.Context, newChannelName s
 		return 0, err
 	}
 	if len(botTokens) > 0 {
-		err = cm.AddBotsToChannel(ctx, userID, newChannelID, botTokens, false)
+		err = cm.AddBotsToChannel(ctx, auth.GetJWTUser(ctx).TgSession, userID, newChannelID, botTokens, false)
 		if err != nil {
 			return 0, err
 		}
@@ -242,14 +246,20 @@ func (cm *ChannelManager) getChannelCreatedAfter(ctx context.Context, userID int
 	return &channel, nil
 }
 
-func (cm *ChannelManager) AddBotsToChannel(ctx context.Context, userId int64, channelId int64, botsTokens []string, save bool) error {
-
-	jwtUser := auth.GetJWTUser(ctx)
+func (cm *ChannelManager) AddBotsToChannel(ctx context.Context, userSession string, userId int64, channelId int64, botsTokens []string, save bool) error {
+	logger := logging.Component("TG").With(
+		zap.Int64("user_id", userId),
+		zap.Int64("channel_id", channelId),
+		zap.Int("bot_count", len(botsTokens)),
+		zap.Bool("save", save),
+	)
+	logger.Info("channel.add_bots.started")
 
 	middlewares := NewMiddleware(cm.cnf, WithFloodWait(), WithRateLimit())
 
-	client, err := AuthClient(ctx, cm.cnf, jwtUser.TgSession, middlewares...)
+	client, err := AuthClient(ctx, cm.cnf, userSession, middlewares...)
 	if err != nil {
+		logger.Error("channel.add_bots.client_failed", zap.Error(err))
 		return err
 	}
 
@@ -258,8 +268,10 @@ func (cm *ChannelManager) AddBotsToChannel(ctx context.Context, userId int64, ch
 		channel, err := GetChannelById(ctx, client.API(), channelId)
 
 		if err != nil {
+			logger.Error("channel.add_bots.channel_lookup_failed", zap.Error(err))
 			return err
 		}
+		logger.Info("channel.add_bots.channel_resolved")
 
 		errChan := make(chan error, len(botsTokens))
 
@@ -270,29 +282,39 @@ func (cm *ChannelManager) AddBotsToChannel(ctx context.Context, userId int64, ch
 		g.SetLimit(4)
 
 		for _, token := range botsTokens {
+			token := token
 			g.Go(func() error {
+				botLogger := logger.With(zap.String("bot_token_id", botTokenID(token)))
+				botLogger.Info("channel.add_bots.bot_started")
 				var info *types.BotInfo
 
 				backoffCfg := backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 3)
 
 				err := backoff.RetryNotify(func() error {
+					botCtx, cancel := context.WithTimeout(ctx, addBotOperationTimeout)
+					defer cancel()
 					var err error
-					info, err = GetBotInfo(ctx, cm.db, cm.cache, cm.cnf, token)
+					info, err = GetBotInfo(botCtx, cm.db, cm.cache, cm.cnf, token)
 					if err != nil {
+						botLogger.Warn("channel.add_bots.bot_info_failed", zap.Error(err))
 						return err
 					}
+					botLogger.Info("channel.add_bots.bot_info_loaded", zap.Int64("bot_id", info.Id), zap.String("username", info.UserName))
 
-					peerClass, err := peer.DefaultResolver(client.API()).ResolveDomain(ctx, info.UserName)
+					peerClass, err := peer.DefaultResolver(client.API()).ResolveDomain(botCtx, info.UserName)
 					if err != nil {
+						botLogger.Warn("channel.add_bots.resolve_failed", zap.String("username", info.UserName), zap.Error(err))
 						return err
 					}
 
 					var ok bool
 					botPeer, ok := peerClass.(*tg.InputPeerUser)
 					if !ok {
+						botLogger.Warn("channel.add_bots.invalid_peer", zap.String("username", info.UserName))
 						return fmt.Errorf("invalid peer type for bot %s", info.UserName)
 					}
 					info.AccessHash = botPeer.AccessHash
+					botLogger.Info("channel.add_bots.promote_started", zap.Int64("bot_id", info.Id))
 					payload := &tg.ChannelsEditAdminRequest{
 						Channel: channel,
 						UserID:  tg.InputUserClass(&tg.InputUser{UserID: info.Id, AccessHash: info.AccessHash}),
@@ -311,17 +333,21 @@ func (cm *ChannelManager) AddBotsToChannel(ctx context.Context, userId int64, ch
 						Rank: "bot",
 					}
 
-					_, err = client.API().ChannelsEditAdmin(ctx, payload)
+					_, err = client.API().ChannelsEditAdmin(botCtx, payload)
 					if err != nil {
+						botLogger.Warn("channel.add_bots.promote_failed", zap.Error(err))
 						return err
 					}
+					botLogger.Info("channel.add_bots.promote_completed", zap.Int64("bot_id", info.Id))
 					return nil
 				}, backoffCfg, nil)
 
 				if err != nil {
+					botLogger.Error("channel.add_bots.bot_failed", zap.Error(err))
 					errChan <- err
 					return nil
 				}
+				botLogger.Info("channel.add_bots.bot_completed", zap.Int64("bot_id", info.Id))
 				infoChan <- info
 				return nil
 			})
@@ -349,6 +375,10 @@ func (cm *ChannelManager) AddBotsToChannel(ctx context.Context, userId int64, ch
 					botErrors = append(botErrors, botErr)
 				}
 			case <-done:
+				logger.Info("channel.add_bots.finished",
+					zap.Int("successful_bots", len(botInfos)),
+					zap.Int("failed_bots", len(botErrors)),
+				)
 				if len(botErrors) > 2 {
 					return fmt.Errorf("failed to process %d out of %d bots", len(botErrors), len(botsTokens))
 				}
@@ -358,16 +388,24 @@ func (cm *ChannelManager) AddBotsToChannel(ctx context.Context, userId int64, ch
 						payload = append(payload, models.Bot{UserId: userId, Token: info.Token, BotId: info.Id})
 					}
 					if err := cm.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&payload).Error; err != nil {
+						logger.Error("channel.add_bots.save_failed", zap.Error(err))
 						return fmt.Errorf("failed to save bots: %w", err)
 					}
 					cm.cache.Delete(ctx, cache.KeyUserBots(userId))
+					logger.Info("channel.add_bots.cache_invalidated")
 				}
 				return nil
 			case <-ctx.Done():
+				logger.Warn("channel.add_bots.context_done", zap.Error(ctx.Err()))
 				return ctx.Err()
 			}
 		}
 	})
 
+	if err != nil {
+		logger.Error("channel.add_bots.failed", zap.Error(err))
+		return err
+	}
+	logger.Info("channel.add_bots.completed")
 	return err
 }

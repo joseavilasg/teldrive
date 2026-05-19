@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gotd/td/telegram/query"
 	"github.com/gotd/td/tg"
@@ -15,36 +16,85 @@ import (
 	"github.com/tgdrive/teldrive/internal/api"
 	"github.com/tgdrive/teldrive/internal/auth"
 	"github.com/tgdrive/teldrive/internal/cache"
+	"github.com/tgdrive/teldrive/internal/logging"
 	"github.com/tgdrive/teldrive/internal/tgc"
 	"github.com/tgdrive/teldrive/internal/tgstorage"
 	"github.com/tgdrive/teldrive/pkg/models"
 
 	"github.com/gotd/contrib/storage"
+	"go.uber.org/zap"
 	"gorm.io/gorm/clause"
 )
 
 func (a *apiService) UsersAddBots(ctx context.Context, req *api.AddBots) error {
 	userID := auth.GetUser(ctx)
+	logger := logging.Component("API").With(
+		zap.Int64("user_id", userID),
+		zap.Int("bot_count", len(req.Bots)),
+	)
+	logger.Info("users.add_bots.started")
+
+	jwtUser := auth.GetJWTUser(ctx)
+	userSession := ""
+	if jwtUser != nil {
+		userSession = jwtUser.TgSession
+	}
 
 	payload := []models.Bot{}
 	if len(req.Bots) > 0 {
 		for _, token := range req.Bots {
-			payload = append(payload, models.Bot{UserId: userID, Token: token})
+			parts := strings.SplitN(token, ":", 2)
+			if len(parts) != 2 {
+				return fmt.Errorf("invalid bot token format")
+			}
+
+			botID, err := strconv.ParseInt(parts[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid bot token id: %w", err)
+			}
+
+			payload = append(payload, models.Bot{UserId: userID, Token: token, BotId: botID})
 		}
 		if err := a.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&payload).Error; err != nil {
+			logger.Error("users.add_bots.persist_failed", zap.Error(err))
 			return err
 		}
+		logger.Info("users.add_bots.persisted", zap.Int("persisted_bots", len(payload)))
 		var channels []int64
 		if err := a.db.Model(&models.Channel{}).Where("user_id = ?", userID).Pluck("channel_id", &channels).Error; err != nil {
+			logger.Error("users.add_bots.channels_load_failed", zap.Error(err))
 			return err
 		}
+		logger.Info("users.add_bots.channels_loaded", zap.Int("channel_count", len(channels)))
 		if len(channels) > 0 {
-			for _, channel := range channels {
-				a.channelManager.AddBotsToChannel(ctx, userID, channel, req.Bots, false)
-			}
+			logger.Info("users.add_bots.channel_sync_dispatched", zap.Int("channel_count", len(channels)))
+			go func(channels []int64, tokens []string, session string) {
+				for _, channel := range channels {
+					syncCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+					logger.Info("users.add_bots.channel_sync_started", zap.Int64("channel_id", channel))
+					if err := a.channelManager.AddBotsToChannel(syncCtx, session, userID, channel, tokens, false); err != nil {
+						if errors.Is(err, context.DeadlineExceeded) {
+							logger.Warn("users.add_bots.channel_sync_timeout",
+								zap.Int64("channel_id", channel),
+								zap.Error(err),
+							)
+						} else {
+							logger.Warn("users.add_bots.channel_sync_failed",
+								zap.Int64("channel_id", channel),
+								zap.Error(err),
+							)
+						}
+					} else {
+						logger.Info("users.add_bots.channel_sync_completed", zap.Int64("channel_id", channel))
+					}
+					cancel()
+				}
+			}(append([]int64(nil), channels...), append([]string(nil), req.Bots...), userSession)
 		}
 		a.cache.Delete(ctx, cache.KeyUserBots(userID))
+		logger.Info("users.add_bots.cache_invalidated")
 	}
+	logger.Info("users.add_bots.completed")
 	return nil
 
 }
